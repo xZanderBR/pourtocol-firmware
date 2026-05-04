@@ -12,6 +12,17 @@
 // ─── Server ──────────────────────────────────────────────────────────────────
 
 AsyncWebServer server(80);
+AsyncWebSocket ws("/ws");
+
+// ─── Event push helpers (forward declarations) ───────────────────────────────
+// Tiny JSON events broadcast to every connected WS client whenever a hardware
+// state transition happens. Lets the backend / frontend skip polling.
+
+void wsEmit(JsonDocument& doc);
+void emitNfcEvent();
+void emitGlassEvent();
+void emitStateEvent();
+void writeSnapshot(JsonDocument& doc);
 
 // ─── PN532 NFC reader (I2C — Adrian rev) ─────────────────────────────────────
 // I2C constructor uses the default Wire pins (SDA=21, SCL=22 on ESP32).
@@ -63,12 +74,14 @@ void updateGlassDetection() {
     if (glassHitCount >= GLASS_DEBOUNCE_HITS && !glassPresent) {
       glassPresent = true;
       Serial.println("[glass] detected (debounced)");
+      emitGlassEvent();
     }
   } else {
     glassHitCount = 0;
     if (glassPresent) {
       glassPresent = false;
       Serial.println("[glass] removed");
+      emitGlassEvent();
     }
   }
 }
@@ -116,17 +129,21 @@ void pollNfc() {
     }
     hex.toUpperCase();
 
-    if (hex != nfcUid) {
-      Serial.printf("[nfc] Tag detected: %s (%d bytes)\n", hex.c_str(), uidLen);
-    }
+    bool transition = (hex != nfcUid);
     nfcUid        = hex;
     nfcTagPresent = true;
     nfcLastSeenMs = millis();
+
+    if (transition) {
+      Serial.printf("[nfc] Tag detected: %s (%d bytes)\n", hex.c_str(), uidLen);
+      emitNfcEvent();
+    }
   } else {
     if (nfcTagPresent && (millis() - nfcLastSeenMs > NFC_TAG_LINGER_MS)) {
       Serial.println("[nfc] Tag cleared (timeout)");
       nfcUid        = "";
       nfcTagPresent = false;
+      emitNfcEvent();
     }
   }
 }
@@ -152,28 +169,65 @@ void startPour(int ml) {
   machineState = MachineState::POURING;
   pumpOn();
   Serial.printf("[dispense] Starting %dml pour, duration %lums\n", ml, durationMs);
+  emitStateEvent();
 }
 
 void stopPour() {
   pumpOff();
   machineState = MachineState::IDLE;
   Serial.println("[dispense] Pour complete");
+  emitStateEvent();
+}
+
+// ─── WebSocket event emitters ────────────────────────────────────────────────
+
+void wsEmit(JsonDocument& doc) {
+  if (ws.count() == 0) return;  // no listeners — don't waste CPU on serialization
+  String body;
+  serializeJson(doc, body);
+  ws.textAll(body);
+}
+
+void emitNfcEvent() {
+  JsonDocument doc;
+  doc["event"]   = "nfc_tag";
+  doc["uid"]     = nfcUid;
+  doc["present"] = nfcTagPresent;
+  wsEmit(doc);
+}
+
+void emitGlassEvent() {
+  JsonDocument doc;
+  doc["event"]   = "glass";
+  doc["present"] = glassPresent;
+  wsEmit(doc);
+}
+
+void emitStateEvent() {
+  JsonDocument doc;
+  doc["event"]        = "state";
+  doc["state"]        = (machineState == MachineState::POURING) ? "pouring" : "idle";
+  doc["last_pour_ml"] = lastPourMl;
+  wsEmit(doc);
+}
+
+// Build a full snapshot of current hardware state into `doc`. Used by both the
+// /status HTTP handler and the WS connect handler so both paths stay in sync.
+void writeSnapshot(JsonDocument& doc) {
+  doc["state"]          = (machineState == MachineState::POURING) ? "pouring" : "idle";
+  doc["glass_present"]  = glassPresent;
+  doc["uptime"]         = millis() / 1000;
+  doc["last_pour_ml"]   = lastPourMl;
+  doc["nfc_uid"]        = nfcUid;
+  doc["nfc_tag_present"]= nfcTagPresent;
+  doc["nfc_ready"]      = nfcReady;
 }
 
 // ─── Route handlers ──────────────────────────────────────────────────────────
 
 void handleStatus(AsyncWebServerRequest *request) {
   JsonDocument doc;
-
-  doc["state"]         = (machineState == MachineState::POURING) ? "pouring" : "idle";
-  doc["glass_present"] = glassPresent;
-  doc["uptime"]        = millis() / 1000;
-  doc["last_pour_ml"]  = lastPourMl;
-
-  doc["nfc_uid"]        = nfcUid;
-  doc["nfc_tag_present"]= nfcTagPresent;
-  doc["nfc_ready"]      = nfcReady;
-
+  writeSnapshot(doc);
   String body;
   serializeJson(doc, body);
   request->send(200, "application/json", body);
@@ -261,8 +315,26 @@ void setup() {
     request->send(404, "application/json", "{\"error\":\"Not found\"}");
   });
 
+  // WebSocket: push state events to subscribers. Send a snapshot on connect so
+  // a fresh client doesn't have to wait for the next physical change.
+  ws.onEvent([](AsyncWebSocket *server, AsyncWebSocketClient *client,
+                AwsEventType type, void *arg, uint8_t *data, size_t len) {
+    if (type == WS_EVT_CONNECT) {
+      Serial.printf("[ws] Client #%u connected\n", client->id());
+      JsonDocument doc;
+      doc["event"] = "snapshot";
+      writeSnapshot(doc);
+      String body;
+      serializeJson(doc, body);
+      client->text(body);
+    } else if (type == WS_EVT_DISCONNECT) {
+      Serial.printf("[ws] Client #%u disconnected\n", client->id());
+    }
+  });
+  server.addHandler(&ws);
+
   server.begin();
-  Serial.println("[server] HTTP server started");
+  Serial.println("[server] HTTP + WebSocket server started");
 }
 
 void loop() {
@@ -278,5 +350,12 @@ void loop() {
   if (millis() - nfcLastPollMs >= NFC_POLL_INTERVAL_MS) {
     nfcLastPollMs = millis();
     pollNfc();
+  }
+
+  // Reap dead WebSocket clients periodically (handles ping/pong + closed conns)
+  static unsigned long lastWsCleanupMs = 0;
+  if (millis() - lastWsCleanupMs >= 1000) {
+    lastWsCleanupMs = millis();
+    ws.cleanupClients();
   }
 }
