@@ -28,7 +28,7 @@
 #define NFC_TAG_LINGER_MS 10000
 
 // How often (ms) the firmware polls the PN532 for a tag
-#define NFC_POLL_INTERVAL_MS 200
+#define NFC_POLL_INTERVAL_MS 100
 
 // ─── Glass detection (debounced) ─────────────────────────────────────────────
 // HC-SR04 distance threshold — anything closer than this counts as "cup detected".
@@ -37,10 +37,10 @@
 
 // Number of consecutive in-range readings required to flag glass present.
 // Filters out spurious echoes / single bad reads.
-#define GLASS_DEBOUNCE_HITS 3
+#define GLASS_DEBOUNCE_HITS 2
 
 // How often (ms) the firmware reads the HC-SR04
-#define DISTANCE_INTERVAL_MS 200
+#define DISTANCE_INTERVAL_MS 150
 
 // ─── Behaviour ───────────────────────────────────────────────────────────────
 // Maximum dispense volume accepted (should match backend settings)

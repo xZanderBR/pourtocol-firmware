@@ -108,7 +108,7 @@ void pollNfc() {
   uint8_t uid[7];
   uint8_t uidLen = 0;
 
-  if (nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLen, 100)) {
+  if (nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLen, 50)) {
     String hex = "";
     for (uint8_t i = 0; i < uidLen; i++) {
       if (uid[i] < 0x10) hex += "0";
@@ -212,11 +212,15 @@ void handleDispense(AsyncWebServerRequest *request, uint8_t *data, size_t len,
 
 void connectWifi() {
   Serial.printf("[wifi] Connecting to %s", WIFI_SSID);
+  WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
+  // Disable modem sleep — keeps the radio responsive (no multi-second latency
+  // from DTIM beacon intervals). ESP32 is wall-powered, so the ~60mA cost is fine.
+  WiFi.setSleep(false);
   Serial.printf("\n[wifi] Connected — IP: %s\n", WiFi.localIP().toString().c_str());
 }
 
