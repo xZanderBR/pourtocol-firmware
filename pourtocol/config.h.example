@@ -1,8 +1,8 @@
 #pragma once
 
 // ─── WiFi ────────────────────────────────────────────────────────────────────
-// NOTE: This file is gitignored. Real credentials live here locally.
-// See config.h.example for the template that ships with the repo.
+// Copy this file to config.h and fill in your network credentials.
+// The real config.h is gitignored to keep credentials out of source control.
 #define WIFI_SSID "your-ssid-here"
 #define WIFI_PASSWORD "your-password-here"
 

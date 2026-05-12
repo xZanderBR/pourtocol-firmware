@@ -3,3 +3,10 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# Local config with WiFi credentials (use config.h.example as template)
+pourtocol/config.h
+
+# macOS
+.DS_Store
+**/.DS_Store
