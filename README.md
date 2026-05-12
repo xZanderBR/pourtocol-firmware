@@ -1,6 +1,6 @@
 # Pourtocol Firmware
 
-ESP32 firmware for [Pourtocol](https://github.com/xZanderBR/pourtocol) — a networked drink dispenser. Handles pump control, ultrasonic glass detection, and NFC-based user identification, exposing a small HTTP API consumed by the Flask coordinator.
+ESP32 firmware for [Pourtocol](https://github.com/xZanderBR/Pourtocol) — a networked drink dispenser. Handles pump control, ultrasonic glass detection, and NFC-based user identification, exposing a small HTTP API consumed by the Flask coordinator.
 
 ## Hardware
 
@@ -106,7 +106,7 @@ All tunables live in `pourtocol/config.h`:
 ## Project Layout
 
 ```text
-pourtocol-firmware/
+Pourtocol-Firmware/
 ├── pourtocol/
 │   ├── pourtocol.ino       # Main sketch — WiFi, HTTP server, state machine
 │   ├── config.h.example    # Template (committed)
