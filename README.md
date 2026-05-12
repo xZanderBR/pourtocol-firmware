@@ -2,6 +2,8 @@
 
 ESP32 firmware for [Pourtocol](https://github.com/xZanderBR/Pourtocol) — a networked drink dispenser. Handles pump control, ultrasonic glass detection, and NFC-based user identification, exposing a small HTTP API consumed by the Flask coordinator.
 
+**Demo:** [youtu.be/go4TOXk46Cg](https://youtu.be/go4TOXk46Cg)
+
 ## Hardware
 
 | Component | Purpose | Pins |
